@@ -22,26 +22,21 @@ Install once:
 npm install -g @ben0918/offline-license-manager
 ```
 
-Start a manager bound only to this Mac:
+Start the multi-App manager bound only to this Mac:
 
 ```bash
-offline-license manager \
-  --app app_lemon_note \
-  --major 1 \
-  --kid lemon-2026-01 \
-  --expected-public-key i-Sop6wjh-4WkfONZw-ycYvti4LmdluuRLSaFj7gHUY \
-  --import-key "$HOME/Library/Application Support/Lemon Point Note License Manager/private-key.pem"
+offline-license manager
 ```
 
-The browser opens automatically at a tokenized `127.0.0.1` URL. On first launch, paste the existing PKCS#8 Ed25519 private-key PEM or generate a key for a new app, then choose a password of at least 12 characters. The UI never writes the plaintext key to disk and keeps the decrypted key only in process memory until locked or closed.
+The browser opens automatically at a tokenized `127.0.0.1` URL. The home screen lists Apps and provides **Create App** and **Restore from backup**. Creating an App generates an Ed25519 key pair; the password is used by Argon2id and AES-256-GCM to encrypt the private key, not as key-generation input. Existing Apps can paste a PKCS#8 private key during creation. The UI never writes the plaintext key to disk and keeps the decrypted key only in process memory until locked or closed.
 
 Manager data defaults to:
 
 ```text
-~/Library/Application Support/Offline License Manager/<appId>/
+~/Library/Application Support/Offline License Manager/apps/<appId>/
 ```
 
-The UI creates every license record before reporting issuance success. It can produce a complete manual `.olmbackup`, copy that encrypted backup to iCloud Drive, and restore a selected backup on a new machine.
+The UI creates every license record before reporting issuance success. App creation and every successful issue automatically create a complete encrypted `.olmbackup`. If iCloud Drive exists, the default external destination is `iCloud Drive/Offline License Manager/<appId>/Backups`; otherwise the UI asks for a folder. **Export to another location** creates the independent offline copy recommended for an external drive or NAS. A new machine can restore the App configuration, encrypted key, public key, and complete record ledger directly from one backup.
 
 ## Install and test
 

@@ -11,7 +11,7 @@ import { createLicenseClient } from './sdk.js'
 import { appendIssuedLicenseRecord, copyBackupToICloud, createBackup, restoreBackup } from './backup.js'
 import { startManager } from './manager.js'
 
-const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.1.0')
+const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.2.0')
 const json = (value: string) => JSON.parse(value)
 const ensureParent = (file: string) => mkdir(dirname(file), { recursive: true })
 
@@ -43,11 +43,10 @@ program.command('key-import')
 
 program.command('manager')
   .description('Open the local-only graphical License Manager')
-  .requiredOption('--app <appId>').requiredOption('--major <number>').requiredOption('--kid <id>')
-  .option('--data <directory>').option('--port <number>', 'Loopback port', '47831').option('--expected-public-key <base64url>').option('--import-key <pem-file>', 'One-time existing key source for first setup')
+  .option('--data <directory>').option('--port <number>', 'Loopback port', '47831')
   .action(async o => {
-    const dataDirectory = o.data || join(homedir(), 'Library', 'Application Support', 'Offline License Manager', o.app)
-    const result = await startManager({ appId: o.app, majorVersion: Number(o.major), kid: o.kid, dataDirectory, port: Number(o.port), expectedPublicKeyRaw: o.expectedPublicKey, importPrivateKeyFile: o.importKey })
+    const dataDirectory = o.data || join(homedir(), 'Library', 'Application Support', 'Offline License Manager')
+    const result = await startManager({ dataDirectory, port: Number(o.port) })
     console.log(`Manager running at ${result.url}`)
   })
 
