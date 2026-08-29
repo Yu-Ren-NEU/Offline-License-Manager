@@ -56,12 +56,14 @@ program.command('issue')
   .requiredOption('--records <file>', 'Persistent issued-license record file')
   .option('--plan <plan>').option('--features <items>', 'Comma-separated features')
   .option('--expires-at <unix>').option('--license-id <id>')
+  .option('--device <deviceId>', 'Bind the license to one device')
   .option('--customer <name>').option('--note <text>')
   .action(async o => {
     const envelope = json(await readFile(o.key, 'utf8'))
     const privateKey = await decryptPrivateKey(envelope, o.password)
     const result = issueLicense({
       licenseId: o.licenseId, appId: o.app, majorVersion: Number(o.major), kid: envelope.kid,
+      ...(o.device ? { deviceId: o.device } : {}),
       ...(o.plan ? { plan: o.plan } : {}),
       ...(o.features ? { features: o.features.split(',').map((x: string) => x.trim()).filter(Boolean) } : {}),
       ...(o.expiresAt ? { expiresAt: Number(o.expiresAt) } : {})
@@ -90,10 +92,11 @@ program.command('backup-restore')
 program.command('verify')
   .requiredOption('--license <code>').requiredOption('--app <appId>').requiredOption('--major <number>')
   .requiredOption('--public <file...>', 'One or more public key JSON files')
+  .option('--device <deviceId>', 'Current device ID for a bound license')
   .action(async o => {
     const publicKeys: Record<string, string> = {}
     for (const file of o.public) { const key = json(await readFile(file, 'utf8')); publicKeys[key.kid] = key.publicKey }
-    const result = createLicenseClient({ appId: o.app, majorVersion: Number(o.major), publicKeys }).verify(o.license)
+    const result = createLicenseClient({ appId: o.app, majorVersion: Number(o.major), publicKeys, ...(o.device ? { deviceId: o.device } : {}) }).verify(o.license)
     console.log(JSON.stringify(result, (_key, value) => typeof value === 'function' ? undefined : value, 2))
     if (!result.valid) process.exitCode = 1
   })

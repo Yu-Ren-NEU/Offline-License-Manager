@@ -4,6 +4,7 @@ export type LicensePayload = {
   majorVersion: number
   plan?: string
   features?: string[]
+  deviceId?: string
   issuedAt: number
   expiresAt?: number
   kid: string
@@ -23,6 +24,7 @@ export type VerifyReason =
   | 'invalid_signature'
   | 'app_mismatch'
   | 'major_version_mismatch'
+  | 'device_mismatch'
   | 'expired'
 
 export type LicenseResult =

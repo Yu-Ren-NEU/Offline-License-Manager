@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { appendIssuedLicenseRecord, copyBackupToICloud, createBackup, decryptPrivateKey, generateSigningKeyPair, encryptPrivateKey, issueLicense, rawPublicKey, restoreBackup } from '../src/index.js'
+import { appendIssuedLicenseRecord, copyBackupToDirectory, copyBackupToICloud, createBackup, decryptPrivateKey, generateSigningKeyPair, encryptPrivateKey, issueLicense, rawPublicKey, restoreBackup } from '../src/index.js'
 
 test('persists records and performs a complete new-machine restore', async () => {
   const root = await mkdtemp(join(tmpdir(), 'olm-backup-')), original = join(root, 'original'), restored = join(root, 'restored')
@@ -28,4 +28,12 @@ test('persists records and performs a complete new-machine restore', async () =>
   const cloud = await copyBackupToICloud({ backupFile, appId: 'app_lemon_note', iCloudRoot: join(root, 'iCloud Drive') })
   const cloudRestore = await restoreBackup({ backupFile: cloud.destination, destination: join(root, 'cloud-restored'), password: backupPassword, expectedAppId: 'app_lemon_note' })
   assert.equal(cloudRestore.recordCount, 1)
+})
+
+test('automatic backup retention keeps only the latest ten snapshots', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'olm-retention-')), directory = join(root, 'Backups'), source = join(root, 'source.olmbackup')
+  await mkdir(directory); await writeFile(source, 'backup')
+  for (let i = 0; i < 11; i++) await writeFile(join(directory, `app_test-2026-01-${String(i).padStart(2, '0')}.olmbackup`), 'old')
+  await copyBackupToDirectory({ backupFile: source, appId: 'app_test', directory, retainLatest: 10 })
+  assert.equal((await readdir(directory)).filter(file => file.startsWith('app_test-') && file.endsWith('.olmbackup')).length, 10)
 })

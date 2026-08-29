@@ -59,3 +59,18 @@ test('new machine restores a complete App from one encrypted backup', async () =
     assert.equal(value.app.name, 'Restored App'); assert.equal(value.app.majorVersion, 2); assert.equal(value.app.records.length, 1)
   } finally { await new Promise<void>(resolve => second.server.close(() => resolve())) }
 })
+
+test('device-bound App requires a matching device request when issuing', async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'olm-bound-'))
+  const manager = await startManager({ dataDirectory, port: 0, openBrowser: false })
+  try {
+    const url = new URL(manager.url), token = url.searchParams.get('token')!, origin = url.origin
+    const call = async (path: string, body: unknown) => { const response = await fetch(`${origin}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Manager-Token': token }, body: JSON.stringify(body) }); return { response, value: await response.json() as any } }
+    const created = await call('create-app', { appId: 'bound_app', name: 'Bound', majorVersion: 1, password: 'manager-test-password', deviceBinding: true })
+    assert.equal(created.response.ok, true); assert.equal(created.value.app.deviceBinding, true)
+    assert.equal((await call('issue', { appId: 'bound_app', plan: 'pro' })).response.ok, false)
+    const request = `OLMR1.${Buffer.from(JSON.stringify({ appId: 'bound_app', majorVersion: 1, deviceId: 'device-123' })).toString('base64url')}`
+    const issued = await call('issue', { appId: 'bound_app', plan: 'pro', deviceRequest: request })
+    assert.equal(issued.response.ok, true); assert.equal(issued.value.issued.payload.deviceId, 'device-123')
+  } finally { await new Promise<void>(resolve => manager.server.close(() => resolve())) }
+})

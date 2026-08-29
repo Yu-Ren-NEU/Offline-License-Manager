@@ -11,6 +11,7 @@ A zero-server license toolkit for desktop, mobile, Mini Program, and other offli
 - CLI for key generation, issuing, and verification
 - Local-only graphical manager for setup, unlock, issue history, backup, and restore
 - Multiple public keys selected by `kid` for safe key rotation
+- Optional per-App device binding, selected when the App is created
 
 There is no server, account system, telemetry, remote revocation, version entity, semver range, or payload encryption.
 
@@ -36,7 +37,7 @@ Manager data defaults to:
 ~/Library/Application Support/Offline License Manager/apps/<appId>/
 ```
 
-The UI creates every license record before reporting issuance success. App creation and every successful issue automatically create a complete encrypted `.olmbackup`. If iCloud Drive exists, the default external destination is `iCloud Drive/Offline License Manager/<appId>/Backups`; otherwise the UI asks for a folder. **Export to another location** creates the independent offline copy recommended for an external drive or NAS. A new machine can restore the App configuration, encrypted key, public key, and complete record ledger directly from one backup.
+The UI creates every license record before reporting issuance success. Device binding is an App-level creation switch: bound Apps require a device request code for every issuance, while unbound Apps produce portable licenses. App creation and every successful issue automatically create a complete encrypted `.olmbackup`. Automatic destinations retain only the latest 10 snapshots. If iCloud Drive exists, the default external destination is `iCloud Drive/Offline License Manager/<appId>/Backups`; otherwise the UI asks for a folder. **Export to another location** creates an independent offline copy and is never automatically deleted. A new machine can restore the App configuration, encrypted key, public key, and complete record ledger directly from one backup.
 
 ### Key rotation
 
@@ -86,6 +87,7 @@ import { createLicenseClient } from '@ben0918/offline-license-manager'
 const license = createLicenseClient({
   appId: 'app_lemon_note',
   majorVersion: 1,
+  deviceId: currentDeviceId, // omit for an App created without device binding
   publicKeys: {
     '2026-01': `-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n`
   }
@@ -96,7 +98,7 @@ if (result.valid && result.plan === 'pro') enablePro()
 if (result.valid && result.hasFeature('excel-export')) enableExport()
 ```
 
-The SDK checks the signature, `kid`, `appId`, exact `majorVersion`, and optional expiry. Business code decides what plans and features mean.
+The SDK checks the signature, `kid`, `appId`, exact `majorVersion`, optional device binding, and optional expiry. Business code decides what plans and features mean.
 
 For WeChat Mini Programs, vendor `miniprogram/index.js` and provide a TweetNaCl-compatible implementation plus raw public keys from the generated public-key record. This adapter has no Node.js dependency.
 

@@ -14,7 +14,7 @@ export function decodeBase64Url(value: string): Buffer {
 export function validatePayload(value: unknown): LicensePayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Payload must be an object')
   const p = value as Record<string, unknown>
-  const keys = new Set(['licenseId', 'appId', 'majorVersion', 'plan', 'features', 'issuedAt', 'expiresAt', 'kid'])
+  const keys = new Set(['licenseId', 'appId', 'majorVersion', 'plan', 'features', 'deviceId', 'issuedAt', 'expiresAt', 'kid'])
   if (Object.keys(p).some(key => !keys.has(key))) throw new Error('Payload contains unknown fields')
   for (const key of ['licenseId', 'appId', 'kid'] as const) {
     if (typeof p[key] !== 'string' || !(p[key] as string).trim()) throw new Error(`${key} is required`)
@@ -24,12 +24,14 @@ export function validatePayload(value: unknown): LicensePayload {
   if (p.expiresAt !== undefined && (!Number.isSafeInteger(p.expiresAt) || (p.expiresAt as number) < 0)) throw new Error('expiresAt must be a Unix timestamp')
   if (p.plan !== undefined && (typeof p.plan !== 'string' || !p.plan)) throw new Error('plan must be a non-empty string')
   if (p.features !== undefined && (!Array.isArray(p.features) || p.features.some(x => typeof x !== 'string' || !x))) throw new Error('features must be strings')
+  if (p.deviceId !== undefined && (typeof p.deviceId !== 'string' || !p.deviceId)) throw new Error('deviceId must be a non-empty string')
   return {
     licenseId: p.licenseId as string,
     appId: p.appId as string,
     majorVersion: p.majorVersion as number,
     ...(p.plan === undefined ? {} : { plan: p.plan as string }),
     ...(p.features === undefined ? {} : { features: [...new Set(p.features as string[])].sort() }),
+    ...(p.deviceId === undefined ? {} : { deviceId: p.deviceId as string }),
     issuedAt: p.issuedAt as number,
     ...(p.expiresAt === undefined ? {} : { expiresAt: p.expiresAt as number }),
     kid: p.kid as string
@@ -44,6 +46,7 @@ export function serializePayload(payload: LicensePayload): string {
     majorVersion: p.majorVersion,
     ...(p.plan === undefined ? {} : { plan: p.plan }),
     ...(p.features === undefined ? {} : { features: p.features }),
+    ...(p.deviceId === undefined ? {} : { deviceId: p.deviceId }),
     issuedAt: p.issuedAt,
     ...(p.expiresAt === undefined ? {} : { expiresAt: p.expiresAt }),
     kid: p.kid

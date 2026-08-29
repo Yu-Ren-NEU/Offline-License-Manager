@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-import { chmod, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import argon2 from 'argon2'
 import type { LicensePayload } from './types.js'
@@ -86,11 +86,20 @@ export async function copyBackupToICloud(options: { backupFile: string; appId: s
   return { destination }
 }
 
-export async function copyBackupToDirectory(options: { backupFile: string; appId: string; directory: string }) {
+export async function copyBackupToDirectory(options: { backupFile: string; appId: string; directory: string; retainLatest?: number }) {
   if (!/^[A-Za-z0-9._-]+$/.test(options.appId) || !options.directory) throw new Error('Valid appId and directory are required')
   await mkdir(options.directory, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const destination = join(options.directory, `${options.appId}-${stamp}.olmbackup`)
   await copyFile(options.backupFile, destination)
-  return { destination }
+  let removed = 0
+  if (options.retainLatest !== undefined) {
+    if (!Number.isSafeInteger(options.retainLatest) || options.retainLatest < 1) throw new Error('retainLatest must be a positive integer')
+    const prefix = `${options.appId}-`
+    const backups = (await readdir(options.directory))
+      .filter(file => file.startsWith(prefix) && file.endsWith('.olmbackup'))
+      .sort((a, b) => b.localeCompare(a))
+    for (const file of backups.slice(options.retainLatest)) { await rm(join(options.directory, file)); removed++ }
+  }
+  return { destination, removed }
 }
