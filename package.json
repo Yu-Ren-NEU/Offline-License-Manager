@@ -1,23 +1,49 @@
 {
   "name": "@ben0918/offline-license-manager",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Zero-server Ed25519 license issuing and verification toolkit",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
-  "bin": { "offline-license": "dist/src/cli.js" },
-  "files": ["dist", "miniprogram", "License_Manager_Plan.md", "README.md", "LICENSE"],
+  "bin": {
+    "offline-license": "dist/src/cli.js"
+  },
+  "files": [
+    "dist",
+    "miniprogram",
+    "License_Manager_Plan.md",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
-  "engines": { "node": ">=20" },
-  "dependencies": { "argon2": "^0.44.0", "commander": "^14.0.0" },
-  "devDependencies": { "@types/node": "^24.3.0", "typescript": "^5.9.2" },
-  "keywords": ["license", "offline", "ed25519", "cli"],
-  "repository": { "type": "git", "url": "git+https://github.com/Yu-Ren-NEU/Offline-License-Manager.git" },
-  "bugs": { "url": "https://github.com/Yu-Ren-NEU/Offline-License-Manager/issues" },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  },
+  "keywords": [
+    "license",
+    "offline",
+    "ed25519",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yu-Ren-NEU/Offline-License-Manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Yu-Ren-NEU/Offline-License-Manager/issues"
+  },
   "homepage": "https://github.com/Yu-Ren-NEU/Offline-License-Manager#readme",
   "license": "MIT"
 }

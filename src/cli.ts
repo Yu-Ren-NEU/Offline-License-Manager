@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
+import { createPublicKey } from 'node:crypto'
 import { Command } from 'commander'
 import { decryptPrivateKey, encryptPrivateKey, generateSigningKeyPair, rawPublicKey } from './crypto.js'
 import { issueLicense } from './issuer.js'
 import { createLicenseClient } from './sdk.js'
 import { appendIssuedLicenseRecord, copyBackupToICloud, createBackup, restoreBackup } from './backup.js'
+import { startManager } from './manager.js'
 
-const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.0.0')
+const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.1.0')
 const json = (value: string) => JSON.parse(value)
 const ensureParent = (file: string) => mkdir(dirname(file), { recursive: true })
 
@@ -22,6 +26,29 @@ program.command('keygen')
     await chmod(o.private, 0o600)
     await writeFile(o.public, JSON.stringify({ kid: o.kid, publicKey: pair.publicKeyPem, publicKeyRaw: rawPublicKey(pair.publicKeyPem) }, null, 2))
     console.log(`Created key ${o.kid}`)
+  })
+
+program.command('key-import')
+  .description('Encrypt an existing PKCS#8 Ed25519 private key for the manager')
+  .requiredOption('--kid <id>').requiredOption('--input <pem-file>').requiredOption('--private <file>').requiredOption('--public <file>')
+  .requiredOption('--password <password>', 'Use a secret input mechanism in production')
+  .action(async o => {
+    const privateKeyPem = await readFile(o.input, 'utf8')
+    const publicKeyPem = createPublicKey(privateKeyPem).export({ type: 'spki', format: 'pem' }).toString()
+    await ensureParent(o.private); await ensureParent(o.public)
+    await writeFile(o.private, JSON.stringify({ kid: o.kid, ...(await encryptPrivateKey(privateKeyPem, o.password)) }, null, 2), { mode: 0o600 }); await chmod(o.private, 0o600)
+    await writeFile(o.public, JSON.stringify({ kid: o.kid, publicKey: publicKeyPem, publicKeyRaw: rawPublicKey(publicKeyPem) }, null, 2))
+    console.log(`Imported and encrypted key ${o.kid}`)
+  })
+
+program.command('manager')
+  .description('Open the local-only graphical License Manager')
+  .requiredOption('--app <appId>').requiredOption('--major <number>').requiredOption('--kid <id>')
+  .option('--data <directory>').option('--port <number>', 'Loopback port', '47831').option('--expected-public-key <base64url>').option('--import-key <pem-file>', 'One-time existing key source for first setup')
+  .action(async o => {
+    const dataDirectory = o.data || join(homedir(), 'Library', 'Application Support', 'Offline License Manager', o.app)
+    const result = await startManager({ appId: o.app, majorVersion: Number(o.major), kid: o.kid, dataDirectory, port: Number(o.port), expectedPublicKeyRaw: o.expectedPublicKey, importPrivateKeyFile: o.importKey })
+    console.log(`Manager running at ${result.url}`)
   })
 
 program.command('issue')

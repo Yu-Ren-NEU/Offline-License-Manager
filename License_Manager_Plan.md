@@ -72,7 +72,7 @@ Required v1 modules:
 - `sdk`: app-bound verification and entitlement helpers.
 - `cli`: key generation, license issuing, and diagnostic verification.
 
-An optional local manager UI may call these modules. If provided, it must bind only to loopback, make no outbound requests, and store no plaintext private key.
+The local manager UI calls these modules, binds only to loopback, makes no outbound requests, and stores no plaintext private key. A random per-process session token protects its local JSON API.
 
 ## 6. App and key model
 
@@ -285,7 +285,7 @@ The CLI must fail with a non-zero exit status on verification or input failure. 
 
 Customer, payment, and issuance records are local manager metadata and are not part of the signed protocol. They must be persisted in a local file or database keyed by `licenseId`. A UI must clearly separate business records from signed payload fields.
 
-The optional UI may offer key unlock, license issue, history, export, and encrypted backup/restore. It must not implement its own cryptography or payload serializer; it calls the shared modules.
+The UI provides first-run key generation or existing-key import, in-memory unlock/lock, license issue, history, manual export, iCloud copy, and encrypted backup/restore. It must not implement its own cryptography or payload serializer; it calls the shared modules.
 
 ## 13. Revocation and offline limitations
 

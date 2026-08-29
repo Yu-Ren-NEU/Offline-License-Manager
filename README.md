@@ -9,9 +9,39 @@ A zero-server license toolkit for desktop, mobile, Mini Program, and other offli
 - Password-encrypted private-key storage using Argon2id and AES-256-GCM
 - SDK client with `valid`, `plan`, and `hasFeature()`
 - CLI for key generation, issuing, and verification
+- Local-only graphical manager for setup, unlock, issue history, backup, and restore
 - Multiple public keys selected by `kid` for safe key rotation
 
 There is no server, account system, telemetry, remote revocation, version entity, semver range, or payload encryption.
+
+## Local Manager UI
+
+Install once:
+
+```bash
+npm install -g @ben0918/offline-license-manager
+```
+
+Start a manager bound only to this Mac:
+
+```bash
+offline-license manager \
+  --app app_lemon_note \
+  --major 1 \
+  --kid lemon-2026-01 \
+  --expected-public-key i-Sop6wjh-4WkfONZw-ycYvti4LmdluuRLSaFj7gHUY \
+  --import-key "$HOME/Library/Application Support/Lemon Point Note License Manager/private-key.pem"
+```
+
+The browser opens automatically at a tokenized `127.0.0.1` URL. On first launch, paste the existing PKCS#8 Ed25519 private-key PEM or generate a key for a new app, then choose a password of at least 12 characters. The UI never writes the plaintext key to disk and keeps the decrypted key only in process memory until locked or closed.
+
+Manager data defaults to:
+
+```text
+~/Library/Application Support/Offline License Manager/<appId>/
+```
+
+The UI creates every license record before reporting issuance success. It can produce a complete manual `.olmbackup`, copy that encrypted backup to iCloud Drive, and restore a selected backup on a new machine.
 
 ## Install and test
 
