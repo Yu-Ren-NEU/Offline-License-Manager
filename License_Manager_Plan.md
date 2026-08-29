@@ -82,7 +82,7 @@ Every app has one stable `appId`, for example `app_lemon_note`. It has at least 
 - the public key is embedded in the business app and verifies licenses;
 - `kid` identifies the signing key used for a license.
 
-An app may trust several public keys simultaneously:
+An app may trust several public keys simultaneously. `kid` is generated automatically by the Manager and is not an ordinary App-creation input:
 
 ```ts
 const publicKeys = {
@@ -91,7 +91,7 @@ const publicKeys = {
 }
 ```
 
-Key rotation adds a new key and `kid`; it does not overwrite the old public key. Old public keys remain bundled until their licenses no longer need to verify. A key must never be reused across unrelated apps unless the owner deliberately accepts the larger blast radius.
+Key rotation is a two-stage publish workflow. The Manager first creates a pending key and exports the combined old/new public-key set. The business App must include and release that set before the Manager allows the operator to confirm the new active signing key. Rotation never overwrites the old key: old public and encrypted private keys remain in the keyring and backups so old licenses continue to verify. A key must never be reused across unrelated apps unless the owner deliberately accepts the larger blast radius.
 
 ## 7. Payload
 

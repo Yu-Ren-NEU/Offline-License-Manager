@@ -11,7 +11,7 @@ import { createLicenseClient } from './sdk.js'
 import { appendIssuedLicenseRecord, copyBackupToICloud, createBackup, restoreBackup } from './backup.js'
 import { startManager } from './manager.js'
 
-const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.2.0')
+const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.3.0')
 const json = (value: string) => JSON.parse(value)
 const ensureParent = (file: string) => mkdir(dirname(file), { recursive: true })
 

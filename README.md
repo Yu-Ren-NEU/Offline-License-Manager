@@ -28,7 +28,7 @@ Start the multi-App manager bound only to this Mac:
 offline-license manager
 ```
 
-The browser opens automatically at a tokenized `127.0.0.1` URL. The home screen lists Apps and provides **Create App** and **Restore from backup**. Creating an App generates an Ed25519 key pair; the password is used by Argon2id and AES-256-GCM to encrypt the private key, not as key-generation input. Existing Apps can paste a PKCS#8 private key during creation. The UI never writes the plaintext key to disk and keeps the decrypted key only in process memory until locked or closed.
+The browser opens automatically at a tokenized `127.0.0.1` URL. The home screen lists Apps and provides **Create App** and **Restore from backup**. Creating an App generates an Ed25519 key pair and an internal `kid` automatically; the password is used by Argon2id and AES-256-GCM to encrypt the private key, not as key-generation input. The UI never writes the plaintext key to disk and keeps the decrypted key only in process memory until locked or closed. Existing Apps move between machines through complete encrypted backups rather than pasted private keys.
 
 Manager data defaults to:
 
@@ -37,6 +37,16 @@ Manager data defaults to:
 ```
 
 The UI creates every license record before reporting issuance success. App creation and every successful issue automatically create a complete encrypted `.olmbackup`. If iCloud Drive exists, the default external destination is `iCloud Drive/Offline License Manager/<appId>/Backups`; otherwise the UI asks for a folder. **Export to another location** creates the independent offline copy recommended for an external drive or NAS. A new machine can restore the App configuration, encrypted key, public key, and complete record ledger directly from one backup.
+
+### Key rotation
+
+`kid` is retained in the protocol but hidden from ordinary App creation. The Manager generates it automatically. Rotation is deliberately two-stage:
+
+1. Generate a pending key.
+2. Copy the full public-key set into the business App and release that App update.
+3. Confirm activation in the Manager.
+
+Only after confirmation do newly issued licenses use the new key. Retired keys remain in the keyring, public-key export, and encrypted backups so old licenses continue to verify.
 
 ## Install and test
 
