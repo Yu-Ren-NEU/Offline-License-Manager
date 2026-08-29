@@ -46,7 +46,7 @@ The password option is convenient for local testing but can appear in shell hist
 ## SDK
 
 ```ts
-import { createLicenseClient } from '@ben/offline-license-manager'
+import { createLicenseClient } from '@ben0918/offline-license-manager'
 
 const license = createLicenseClient({
   appId: 'app_lemon_note',
