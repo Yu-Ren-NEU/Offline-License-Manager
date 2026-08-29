@@ -45,7 +45,7 @@ The password option is convenient for local testing but can appear in shell hist
 ## SDK
 
 ```ts
-import { createLicenseClient } from '@yu-ren/offline-license-manager'
+import { createLicenseClient } from '@ben/offline-license-manager'
 
 const license = createLicenseClient({
   appId: 'app_lemon_note',
@@ -61,6 +61,21 @@ if (result.valid && result.hasFeature('excel-export')) enableExport()
 ```
 
 The SDK checks the signature, `kid`, `appId`, exact `majorVersion`, and optional expiry. Business code decides what plans and features mean.
+
+For WeChat Mini Programs, vendor `miniprogram/index.js` and provide a TweetNaCl-compatible implementation plus raw public keys from the generated public-key record. This adapter has no Node.js dependency.
+
+## Encrypted iCloud sync
+
+On macOS, encrypted manager data can be synchronized to `iCloud Drive/Offline License Manager/<appId>`:
+
+```bash
+offline-license sync-icloud --app app_lemon_note \
+  --key .local/lemon.olmkey \
+  --public .local/lemon.public.json \
+  --records .local/licenses.json
+```
+
+Only the Argon2id/AES-256-GCM encrypted key file, public-key record, and optional license records are copied. Restore with `offline-license restore-icloud --app app_lemon_note --destination .local`.
 
 ## Design contract
 

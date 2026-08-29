@@ -277,7 +277,7 @@ v1 is complete when:
 - README examples match the exported API;
 - a second app can use the package without Lemon Note-specific source changes.
 
-## 16. Lemon Note migration
+## 16. Lemon Note reference integration
 
 Lemon Note should integrate as:
 
@@ -289,6 +289,6 @@ createLicenseClient({
 })
 ```
 
-Its current product-specific `maxMajorVersion`, installation request code, permanent flag, and shared version catalog are not part of this platform contract. Migrating already issued Lemon Note licenses requires either a temporary legacy verifier or reissuing licenses; the new generic library must not silently reinterpret the old `LPNA1` payload.
+The pre-release Lemon Note integration was reset to this contract: its product-specific `maxMajorVersion`, installation request code, permanent flag, and shared version catalog were removed. It accepts only `OLM1` licenses and uses `plan === 'pro'` or explicit feature identifiers for business behavior.
 
-This migration is an explicit product decision because the final v1 model grants one exact major version rather than cumulative `maxMajorVersion` access.
+Released products with an older protocol must make their own explicit migration decision; the generic library never silently reinterprets legacy payloads.

@@ -2,9 +2,10 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { Command } from 'commander'
-import { decryptPrivateKey, encryptPrivateKey, generateSigningKeyPair } from './crypto.js'
+import { decryptPrivateKey, encryptPrivateKey, generateSigningKeyPair, rawPublicKey } from './crypto.js'
 import { issueLicense } from './issuer.js'
 import { createLicenseClient } from './sdk.js'
+import { restoreFromICloud, syncToICloud } from './icloud.js'
 
 const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.0.0')
 const json = (value: string) => JSON.parse(value)
@@ -19,9 +20,21 @@ program.command('keygen')
     await ensureParent(o.private); await ensureParent(o.public)
     await writeFile(o.private, JSON.stringify({ kid: o.kid, ...encrypted }, null, 2), { mode: 0o600 })
     await chmod(o.private, 0o600)
-    await writeFile(o.public, JSON.stringify({ kid: o.kid, publicKey: pair.publicKeyPem }, null, 2))
+    await writeFile(o.public, JSON.stringify({ kid: o.kid, publicKey: pair.publicKeyPem, publicKeyRaw: rawPublicKey(pair.publicKeyPem) }, null, 2))
     console.log(`Created key ${o.kid}`)
   })
+
+program.command('sync-icloud')
+  .description('Copy encrypted manager data to iCloud Drive')
+  .requiredOption('--app <appId>').requiredOption('--key <encrypted-key-file>').requiredOption('--public <public-key-file>')
+  .option('--records <records-file>').option('--icloud-root <directory>')
+  .action(async o => console.log(JSON.stringify(await syncToICloud({ appId: o.app, encryptedKeyFile: o.key, publicKeyFile: o.public, recordsFile: o.records, iCloudRoot: o.icloudRoot }), null, 2)))
+
+program.command('restore-icloud')
+  .description('Restore encrypted manager data from iCloud Drive')
+  .requiredOption('--app <appId>').requiredOption('--destination <directory>')
+  .option('--icloud-root <directory>')
+  .action(async o => console.log(JSON.stringify(await restoreFromICloud({ appId: o.app, destination: o.destination, iCloudRoot: o.icloudRoot }), null, 2)))
 
 program.command('issue')
   .requiredOption('--key <file>').requiredOption('--password <password>')

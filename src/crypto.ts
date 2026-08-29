@@ -16,6 +16,11 @@ export function generateSigningKeyPair(): { privateKeyPem: string; publicKeyPem:
   }
 }
 
+export function rawPublicKey(publicKeyPem: string): string {
+  const der = createPublicKey(publicKeyPem).export({ type: 'spki', format: 'der' })
+  return der.subarray(der.length - 32).toString('base64url')
+}
+
 export function signBytes(data: Uint8Array, privateKeyPem: string): Buffer {
   return sign(null, data, createPrivateKey(privateKeyPem))
 }
