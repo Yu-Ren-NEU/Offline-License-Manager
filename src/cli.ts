@@ -5,7 +5,7 @@ import { Command } from 'commander'
 import { decryptPrivateKey, encryptPrivateKey, generateSigningKeyPair, rawPublicKey } from './crypto.js'
 import { issueLicense } from './issuer.js'
 import { createLicenseClient } from './sdk.js'
-import { restoreFromICloud, syncToICloud } from './icloud.js'
+import { appendIssuedLicenseRecord, copyBackupToICloud, createBackup, restoreBackup } from './backup.js'
 
 const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.0.0')
 const json = (value: string) => JSON.parse(value)
@@ -24,23 +24,13 @@ program.command('keygen')
     console.log(`Created key ${o.kid}`)
   })
 
-program.command('sync-icloud')
-  .description('Copy encrypted manager data to iCloud Drive')
-  .requiredOption('--app <appId>').requiredOption('--key <encrypted-key-file>').requiredOption('--public <public-key-file>')
-  .option('--records <records-file>').option('--icloud-root <directory>')
-  .action(async o => console.log(JSON.stringify(await syncToICloud({ appId: o.app, encryptedKeyFile: o.key, publicKeyFile: o.public, recordsFile: o.records, iCloudRoot: o.icloudRoot }), null, 2)))
-
-program.command('restore-icloud')
-  .description('Restore encrypted manager data from iCloud Drive')
-  .requiredOption('--app <appId>').requiredOption('--destination <directory>')
-  .option('--icloud-root <directory>')
-  .action(async o => console.log(JSON.stringify(await restoreFromICloud({ appId: o.app, destination: o.destination, iCloudRoot: o.icloudRoot }), null, 2)))
-
 program.command('issue')
   .requiredOption('--key <file>').requiredOption('--password <password>')
   .requiredOption('--app <appId>').requiredOption('--major <number>')
+  .requiredOption('--records <file>', 'Persistent issued-license record file')
   .option('--plan <plan>').option('--features <items>', 'Comma-separated features')
   .option('--expires-at <unix>').option('--license-id <id>')
+  .option('--customer <name>').option('--note <text>')
   .action(async o => {
     const envelope = json(await readFile(o.key, 'utf8'))
     const privateKey = await decryptPrivateKey(envelope, o.password)
@@ -50,8 +40,26 @@ program.command('issue')
       ...(o.features ? { features: o.features.split(',').map((x: string) => x.trim()).filter(Boolean) } : {}),
       ...(o.expiresAt ? { expiresAt: Number(o.expiresAt) } : {})
     }, privateKey)
+    await appendIssuedLicenseRecord(o.records, { payload: result.payload, code: result.code, issuedAt: new Date().toISOString(), ...(o.customer ? { customer: o.customer } : {}), ...(o.note ? { note: o.note } : {}) })
     console.log(result.code)
   })
+
+program.command('backup-export')
+  .description('Create a complete encrypted offline backup file')
+  .requiredOption('--app <appId>').requiredOption('--key <encrypted-key-file>').requiredOption('--public <public-key-file>')
+  .requiredOption('--records <records-file>').requiredOption('--output <file>').requiredOption('--password <password>')
+  .action(async o => console.log(JSON.stringify(await createBackup({ appId: o.app, encryptedKeyFile: o.key, publicKeyFile: o.public, recordsFile: o.records, outputFile: o.output, password: o.password }), null, 2)))
+
+program.command('backup-icloud')
+  .description('Copy an already encrypted backup file to iCloud Drive')
+  .requiredOption('--app <appId>').requiredOption('--backup <file>').option('--icloud-root <directory>')
+  .action(async o => console.log(JSON.stringify(await copyBackupToICloud({ appId: o.app, backupFile: o.backup, iCloudRoot: o.icloudRoot }), null, 2)))
+
+program.command('backup-restore')
+  .description('Restore a complete backup on a new machine')
+  .requiredOption('--backup <file>').requiredOption('--destination <directory>').requiredOption('--password <password>')
+  .option('--app <appId>', 'Reject a backup for another app')
+  .action(async o => console.log(JSON.stringify(await restoreBackup({ backupFile: o.backup, destination: o.destination, password: o.password, expectedAppId: o.app }), null, 2)))
 
 program.command('verify')
   .requiredOption('--license <code>').requiredOption('--app <appId>').requiredOption('--major <number>')

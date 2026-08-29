@@ -203,7 +203,11 @@ if (result.valid && result.plan === 'pro') enableProFeatures()
 if (result.valid && result.hasFeature('excel-export')) enableExcelExport()
 ```
 
-## 10. Private-key storage
+## 10. Backup & Recovery
+
+Backup and recovery are mandatory v1 capabilities. A manager is not production-ready until its key, public-key configuration, and complete issuance ledger can be recovered on another machine without a server.
+
+### 10.1 Local private-key protection
 
 Private keys are PKCS#8 Ed25519 keys encrypted at rest with:
 
@@ -216,7 +220,53 @@ Private keys are PKCS#8 Ed25519 keys encrypted at rest with:
 
 The v1 implementation uses Argon2id with 64 MiB memory, three iterations, and parallelism one. Parameters are stored in the envelope so they can be strengthened later. Key files use owner-only permissions where the operating system supports them.
 
-Passwords and plaintext keys must never be written to logs, records, repositories, backups, or crash reports. Decryption failure must not overwrite existing data. Encrypted key backups remain sensitive and should be stored separately from their passwords.
+Passwords and plaintext keys must never be written to logs, records, repositories, backups, or crash reports. Decryption failure must not overwrite existing data. The local manager persists only the encrypted `.olmkey` envelope and decrypts it in memory for signing.
+
+### 10.2 Persistent issuance ledger
+
+Every successful issue operation must be recorded before it is reported as complete. The append-only logical record contains the complete signed payload, final license code, UTC issuance time, and optional customer/note metadata. Records use `licenseId` as their unique key and are written atomically with owner-only permissions.
+
+The ledger is operational data, not part of license verification. Losing it does not invalidate customer licenses, but it destroys the owner's audit and re-delivery history; it is therefore a required backup component.
+
+### 10.3 Complete encrypted backup format
+
+A `.olmbackup` is a single portable, authenticated envelope containing:
+
+- the already-encrypted local private-key record;
+- the public-key record and `kid`;
+- the complete issued-license ledger;
+- `appId`, format version, creation time, and consistency metadata.
+
+The whole backup payload is independently encrypted with AES-256-GCM using a 256-bit key derived from the backup password with Argon2id. Each backup gets a new random salt and IV. KDF parameters, salt, IV, and authentication tag are stored in the outer envelope. This second encryption layer protects customer metadata and license codes as well as the encrypted signing key.
+
+Creating a backup must first verify that the encrypted private-key record and public-key record have the same `kid`. A backup is not successful until the complete file has been atomically written and can be decrypted and validated.
+
+### 10.4 Two independent backup channels
+
+v1 supports both:
+
+1. **iCloud Drive copy:** copy a completed `.olmbackup` into `iCloud Drive/Offline License Manager/<appId>/Backups/` with a timestamped filename.
+2. **Manual offline export:** save the same `.olmbackup` to a user-selected external drive, encrypted archive, or other offline medium.
+
+iCloud is a convenience channel, not the backup system and never the only copy. The recommended minimum is one current iCloud copy plus one current offline copy on separate storage. Backup passwords must be held separately, ideally in a password manager and an offline recovery record.
+
+No sync provider receives plaintext keys, plaintext records, or the backup password. Backup and restore make no network request; copying into the local iCloud Drive folder is an ordinary filesystem operation whose later synchronization is performed by macOS.
+
+### 10.5 Full restore on a new machine
+
+The new-machine recovery flow is:
+
+1. Install a supported Node runtime and this CLI from a trusted release or verified source checkout.
+2. Obtain one `.olmbackup` from either the manual offline copy or the locally synchronized iCloud Drive folder.
+3. Run `backup-restore` with the expected `appId`, destination manager-data directory, and backup password.
+4. Derive the backup key with the stored Argon2id parameters and authenticate/decrypt with AES-256-GCM.
+5. Validate format version, `appId`, `kid`, encrypted-key format, public-key record, and ledger structure before writing anything.
+6. Write `signing-key.olmkey`, `public-key.json`, and `licenses.json` atomically with restrictive permissions.
+7. Unlock the restored `.olmkey` using its local-key password and confirm its derived public key matches the restored public-key record.
+8. Issue a disposable test license and verify it with the restored public key before resuming real issuance.
+9. Immediately create fresh iCloud and manual offline backups from the restored machine.
+
+Wrong passwords, damaged authentication tags, mismatched apps/keys, incomplete files, or invalid records must abort without partially replacing an existing installation. Restore targets should be empty; overwriting an active manager requires an explicit UI confirmation and a safety backup.
 
 ## 11. CLI
 
@@ -225,12 +275,15 @@ The CLI provides:
 - `keygen`: create an Ed25519 pair, encrypt the private key, and export a public-key record containing `kid`;
 - `issue`: decrypt a selected local key and sign a validated payload;
 - `verify`: verify a code for an explicit `appId` and major version using one or more public-key records.
+- `backup-export`: create a complete encrypted `.olmbackup` for manual offline storage;
+- `backup-icloud`: copy an encrypted backup to the app's iCloud Drive backup directory;
+- `backup-restore`: authenticate, validate, and restore a complete backup on a new machine.
 
 The CLI must fail with a non-zero exit status on verification or input failure. Production wrappers should collect passwords through hidden input or an OS secret store; passing a password as an argument is only a minimal integration interface and may expose it in shell history.
 
 ## 12. Local records and optional UI
 
-Customer, payment, and issuance records are local manager metadata and are not part of the signed protocol. They may be stored in a local file or database keyed by `licenseId`. A UI must clearly separate business records from signed payload fields.
+Customer, payment, and issuance records are local manager metadata and are not part of the signed protocol. They must be persisted in a local file or database keyed by `licenseId`. A UI must clearly separate business records from signed payload fields.
 
 The optional UI may offer key unlock, license issue, history, export, and encrypted backup/restore. It must not implement its own cryptography or payload serializer; it calls the shared modules.
 
@@ -266,6 +319,10 @@ Automated tests must cover:
 - unknown and rotated `kid` values;
 - exact expiry boundary;
 - private-key encrypt/decrypt round trip, wrong password, and damaged ciphertext;
+- atomic issued-license record persistence and duplicate rejection;
+- complete backup creation and restore, including every issued record;
+- wrong backup password, damaged backup, mismatched `appId`, and inconsistent `kid` rejection;
+- iCloud copy and manual offline export using the same encrypted backup format;
 - stable canonical serialization and duplicate feature handling.
 
 v1 is complete when:
@@ -273,6 +330,8 @@ v1 is complete when:
 - the package builds from a clean checkout;
 - all tests pass on the supported Node version;
 - CLI key generation, issue, and verify complete end to end;
+- a clean-machine restore can sign a test license that the original public key verifies;
+- documented iCloud and manual offline backup copies can both restore the same state;
 - repository history contains no private key, real license, customer record, or password;
 - README examples match the exported API;
 - a second app can use the package without Lemon Note-specific source changes.

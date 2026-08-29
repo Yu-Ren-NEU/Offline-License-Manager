@@ -36,6 +36,7 @@ node dist/src/cli.js issue \
   --password 'replace-with-a-long-password' \
   --app app_lemon_note \
   --major 1 \
+  --records .local/licenses.json \
   --plan pro \
   --features excel-export,unlimited-roster
 ```
@@ -64,18 +65,29 @@ The SDK checks the signature, `kid`, `appId`, exact `majorVersion`, and optional
 
 For WeChat Mini Programs, vendor `miniprogram/index.js` and provide a TweetNaCl-compatible implementation plus raw public keys from the generated public-key record. This adapter has no Node.js dependency.
 
-## Encrypted iCloud sync
+## Backup and recovery
 
-On macOS, encrypted manager data can be synchronized to `iCloud Drive/Offline License Manager/<appId>`:
+Create a complete encrypted backup containing the encrypted signing key, public-key record, and all issued-license records:
 
 ```bash
-offline-license sync-icloud --app app_lemon_note \
+offline-license backup-export --app app_lemon_note \
   --key .local/lemon.olmkey \
   --public .local/lemon.public.json \
-  --records .local/licenses.json
+  --records .local/licenses.json \
+  --output /Volumes/OfflineBackup/lemon.olmbackup \
+  --password 'a-separate-backup-password'
+
+offline-license backup-icloud --app app_lemon_note \
+  --backup /Volumes/OfflineBackup/lemon.olmbackup
+
+offline-license backup-restore \
+  --app app_lemon_note \
+  --backup /path/to/lemon.olmbackup \
+  --destination .local \
+  --password 'a-separate-backup-password'
 ```
 
-Only the Argon2id/AES-256-GCM encrypted key file, public-key record, and optional license records are copied. Restore with `offline-license restore-icloud --app app_lemon_note --destination .local`.
+The whole `.olmbackup` is protected by Argon2id and AES-256-GCM. Keep at least one iCloud copy and one manual offline copy on separate storage; iCloud must never be the only backup. Restore is fully local and requires no server.
 
 ## Design contract
 
