@@ -37,20 +37,20 @@ function createMiniProgramLicenseClient(options) {
     let parts, payload, signature
     try {
       parts = String(code || '').trim().split('.')
-      if (parts.length !== 3 || parts[0] !== 'OLM1') return invalid('malformed', '激活码格式不正确')
+      if (parts.length !== 3 || parts[0] !== 'OLM1') return invalid('malformed', 'Invalid license format')
       payload = JSON.parse(utf8Text(base64UrlToBytes(parts[1])))
-      if (!validPayload(payload)) return invalid('invalid_payload', '激活码内容不正确')
+      if (!validPayload(payload)) return invalid('invalid_payload', 'Invalid license payload')
       signature = base64UrlToBytes(parts[2])
-      if (signature.length !== 64) return invalid('malformed', '激活码签名格式不正确')
-    } catch (_) { return invalid('malformed', '激活码无法解析') }
+      if (signature.length !== 64) return invalid('malformed', 'Invalid license signature format')
+    } catch (_) { return invalid('malformed', 'License cannot be parsed') }
     const publicKey = options.publicKeys[payload.kid]
-    if (!publicKey) return invalid('unknown_key', '激活码使用了未知签名密钥', payload)
-    if (!nacl.sign.detached.verify(utf8Bytes(parts[1]), signature, base64UrlToBytes(publicKey))) return invalid('invalid_signature', '激活码签名无效', payload)
-    if (payload.appId !== options.appId) return invalid('app_mismatch', '激活码不属于当前应用', payload)
-    if (payload.majorVersion !== options.majorVersion) return invalid('major_version_mismatch', '激活码不适用于当前大版本', payload)
-    if (payload.deviceId !== options.deviceId) return invalid('device_mismatch', '激活码的设备绑定与当前应用不一致', payload)
+    if (!publicKey) return invalid('unknown_key', 'License uses an unknown signing key', payload)
+    if (!nacl.sign.detached.verify(utf8Bytes(parts[1]), signature, base64UrlToBytes(publicKey))) return invalid('invalid_signature', 'License signature is invalid', payload)
+    if (payload.appId !== options.appId) return invalid('app_mismatch', 'License belongs to another app', payload)
+    if (payload.majorVersion !== options.majorVersion) return invalid('major_version_mismatch', 'License does not cover this major version', payload)
+    if (payload.deviceId !== options.deviceId) return invalid('device_mismatch', 'License device binding does not match this app', payload)
     const now = options.now ? options.now() : Math.floor(Date.now() / 1000)
-    if (payload.expiresAt !== undefined && now >= payload.expiresAt) return invalid('expired', '激活码已过期', payload)
+    if (payload.expiresAt !== undefined && now >= payload.expiresAt) return invalid('expired', 'License has expired', payload)
     return { valid: true, payload: payload, plan: payload.plan, hasFeature: function (feature) { return Array.isArray(payload.features) && payload.features.indexOf(feature) >= 0 } }
   }
   return { verify: verify }
