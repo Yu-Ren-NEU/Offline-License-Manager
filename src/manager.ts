@@ -555,6 +555,7 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
 (()=>{
   const baseRenderApp=renderApp
   let filterAppId='',selectedPlans=new Set(),lastAutofillDeviceId=''
+  $('unlockPassword').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();$('unlockButton').click()}})
   function decodeDeviceId(value){
     if(!app.deviceBinding)return ''
     try{
