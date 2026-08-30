@@ -20,6 +20,9 @@ test('local manager configures, unlocks, issues, records, and backs up', async (
     const setup = await api('create-app', { appId: 'test_app', name: 'Test App', majorVersion: 1, kid: 'test-key', password: 'manager-test-password', privateKeyPem: '', backupDirectory: join(dataDirectory, 'external-backups') })
     assert.equal(setup.app.unlocked, true)
     assert.match(setup.app.kid, /^key-\d{8}-[a-f0-9]{6}$/)
+    await api('create-plan', { appId: 'test_app', name: 'free' })
+    const plans = await api('create-plan', { appId: 'test_app', name: 'pro' })
+    assert.deepEqual(plans.app.plans, ['free', 'pro'])
     const issued = await api('issue', { appId: 'test_app', customer: 'Customer', plan: 'pro', features: 'export,sync' })
     assert.match(issued.issued.code, /^OLM1\./)
     assert.equal(issued.app.records.length, 1)
@@ -46,6 +49,7 @@ test('new machine restores a complete App from one encrypted backup', async () =
     const url = new URL(first.url), token = url.searchParams.get('token')!, origin = url.origin
     const call = async (path: string, body: unknown) => { const response = await fetch(`${origin}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Manager-Token': token }, body: JSON.stringify(body) }); const value = await response.json() as any; assert.equal(response.ok, true, value.error); return value }
     await call('create-app', { appId: 'restored_app', name: 'Restored App', majorVersion: 2, kid: 'key-2', password: 'manager-test-password', backupDirectory: external })
+    await call('create-plan', { appId: 'restored_app', name: 'free' })
     await call('issue', { appId: 'restored_app', customer: 'One', plan: 'free' })
     const exported = await call('export-backup', { appId: 'restored_app', directory: external })
     backupFile = exported.copied.destination
@@ -56,7 +60,7 @@ test('new machine restores a complete App from one encrypted backup', async () =
     const response = await fetch(`${origin}/api/restore-new`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Manager-Token': token }, body: JSON.stringify({ backupFile, password: 'manager-test-password' }) })
     const value = await response.json() as any
     assert.equal(response.ok, true, value.error)
-    assert.equal(value.app.name, 'Restored App'); assert.equal(value.app.majorVersion, 2); assert.equal(value.app.records.length, 1)
+    assert.equal(value.app.name, 'Restored App'); assert.equal(value.app.majorVersion, 2); assert.equal(value.app.records.length, 1); assert.deepEqual(value.app.plans, ['free'])
   } finally { await new Promise<void>(resolve => second.server.close(() => resolve())) }
 })
 
@@ -68,6 +72,7 @@ test('device-bound App requires a matching device request when issuing', async (
     const call = async (path: string, body: unknown) => { const response = await fetch(`${origin}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Manager-Token': token }, body: JSON.stringify(body) }); return { response, value: await response.json() as any } }
     const created = await call('create-app', { appId: 'bound_app', name: 'Bound', majorVersion: 1, password: 'manager-test-password', deviceBinding: true })
     assert.equal(created.response.ok, true); assert.equal(created.value.app.deviceBinding, true)
+    const plan = await call('create-plan', { appId: 'bound_app', name: 'pro' }); assert.equal(plan.response.ok, true)
     assert.equal((await call('issue', { appId: 'bound_app', plan: 'pro' })).response.ok, false)
     const request = `OLMR1.${Buffer.from(JSON.stringify({ appId: 'bound_app', majorVersion: 1, deviceId: 'device-123' })).toString('base64url')}`
     const issued = await call('issue', { appId: 'bound_app', plan: 'pro', deviceRequest: request })
