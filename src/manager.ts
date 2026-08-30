@@ -571,8 +571,10 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
 </script><script>
 (()=>{
   const baseRenderApp=renderApp
+  const baseOpenApp=openApp
   let filterAppId='',selectedPlans=new Set(),lastAutofillDeviceId=''
   $('unlockPassword').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();$('unlockButton').click()}})
+  openApp=async function(id){await baseOpenApp(id);if(!app.unlocked)requestAnimationFrame(()=>$('unlockPassword').focus())}
   function decodeDeviceId(value){
     if(!app.deviceBinding)return ''
     try{
