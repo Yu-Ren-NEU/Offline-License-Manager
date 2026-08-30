@@ -554,7 +554,7 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
 </script><script>
 (()=>{
   const baseRenderApp=renderApp
-  let filterAppId='',selectedPlans=new Set()
+  let filterAppId='',selectedPlans=new Set(),lastAutofillDeviceId=''
   function decodeDeviceId(value){
     if(!app.deviceBinding)return ''
     try{
@@ -600,6 +600,20 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
     $('recordSearch').placeholder=app.deviceBinding?'Search customer, features, note, or paste a license/device request':'Search customer, features, or note'
     applyRecordFilters()
   }
-  renderApp=function(){baseRenderApp();setupRecordFilters()}
+  function setupDeviceAutofill(){
+    const field=$('deviceRequest')
+    field.oninput=()=>{
+      const deviceId=decodeDeviceId(field.value)
+      if(!deviceId){lastAutofillDeviceId='';return}
+      if(deviceId===lastAutofillDeviceId)return
+      lastAutofillDeviceId=deviceId
+      const previous=app.records.find(record=>record.payload?.deviceId===deviceId)
+      if(!previous)return
+      if(previous.customer)$('customer').value=previous.customer
+      const subject=previous.customer||'This device',plan=previous.payload?.plan
+      toast(plan?subject+' has already been issued the '+plan+' plan.':subject+' has already received a license.')
+    }
+  }
+  renderApp=function(){baseRenderApp();if(filterAppId!==app.appId)lastAutofillDeviceId='';setupRecordFilters();setupDeviceAutofill()}
 })()
 </script></body></html>`;
