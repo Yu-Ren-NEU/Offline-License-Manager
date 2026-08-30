@@ -695,6 +695,7 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
   }
   function setupMajorVersions(){
     if(majorAppId!==app.appId){majorAppId=app.appId;selectedMajorVersion=app.majorVersion}
+    $('majorVersionManager').classList.toggle('hidden',!app.unlocked)
     $('majorVersionList').innerHTML=app.majorVersions.map(version=>'<button class="major-version-chip" data-version="'+version+'">Major '+version+'</button>').join('')
     $('majorVersionList').querySelectorAll('button').forEach(button=>button.onclick=()=>selectMajorVersion(button.dataset.version))
     $('releaseMajorVersion').classList.toggle('hidden',!app.unlocked)
