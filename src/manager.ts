@@ -43,6 +43,7 @@ type AppConfig = {
   appId: string;
   name: string;
   majorVersion: number;
+  majorVersions: number[];
   kid: string;
   publicKeyRaw: string;
   keys: AppKeyInfo[];
@@ -80,7 +81,9 @@ export async function startManager(options: ManagerOptions) {
     );
   const appDirectory = (appId: string) => {
     if (!/^[A-Za-z0-9._-]+$/.test(appId))
-      throw new Error("appId may contain only letters, numbers, dots, underscores, and hyphens");
+      throw new Error(
+        "appId may contain only letters, numbers, dots, underscores, and hyphens",
+      );
     return join(appsDirectory, appId);
   };
   const paths = (appId: string) => {
@@ -105,6 +108,16 @@ export async function startManager(options: ManagerOptions) {
     ) as AppConfig;
     if (typeof config.deviceBinding !== "boolean") config.deviceBinding = false;
     if (!Array.isArray(config.plans)) config.plans = [];
+    config.majorVersions = [
+      ...new Set(
+        (Array.isArray(config.majorVersions)
+          ? config.majorVersions
+          : [config.majorVersion]
+        ).filter((version) => Number.isSafeInteger(version) && version > 0),
+      ),
+    ].sort((a, b) => a - b);
+    if (!config.majorVersions.length) config.majorVersions = [1];
+    config.majorVersion = config.majorVersions.at(-1)!;
     if (!Array.isArray(config.keys))
       config.keys = [
         {
@@ -219,10 +232,16 @@ export async function startManager(options: ManagerOptions) {
           'POSIX path of (choose folder with prompt "Choose a License Manager backup folder")',
         ],
         (error, stdout) =>
-          error ? reject(new Error("No folder selected")) : resolve(stdout.trim()),
+          error
+            ? reject(new Error("No folder selected"))
+            : resolve(stdout.trim()),
       ),
     );
-  const readDeviceRequest = (code: string, config: AppConfig) => {
+  const readDeviceRequest = (
+    code: string,
+    config: AppConfig,
+    majorVersion: number,
+  ) => {
     try {
       const parts = code.trim().split(".");
       if (parts.length !== 2 || parts[0] !== "OLMR1") throw new Error();
@@ -231,14 +250,16 @@ export async function startManager(options: ManagerOptions) {
       );
       if (
         request.appId !== config.appId ||
-        request.majorVersion !== config.majorVersion ||
+        request.majorVersion !== majorVersion ||
         typeof request.deviceId !== "string" ||
         !request.deviceId
       )
         throw new Error();
       return request.deviceId as string;
     } catch {
-      throw new Error("The device request is invalid or belongs to another app or major version");
+      throw new Error(
+        "The device request is invalid or belongs to another app or major version",
+      );
     }
   };
   const snapshot = async (
@@ -300,11 +321,10 @@ export async function startManager(options: ManagerOptions) {
         const input = await body(req),
           appId = String(input.appId || "").trim(),
           name = String(input.name || "").trim() || appId,
-          majorVersion = Number(input.majorVersion),
+          majorVersion = 1,
           kid = generateKid(),
           password = String(input.password || "");
-        if (!appId || !Number.isSafeInteger(majorVersion) || majorVersion < 1)
-          throw new Error("Enter a valid App ID and Major Version");
+        if (!appId) throw new Error("Enter a valid App ID");
         const p = paths(appId);
         if (await exists(p.config)) throw new Error("App ID already exists");
         await mkdir(p.root, { recursive: true });
@@ -319,6 +339,7 @@ export async function startManager(options: ManagerOptions) {
             appId,
             name,
             majorVersion,
+            majorVersions: [majorVersion],
             kid,
             publicKeyRaw,
             deviceBinding: input.deviceBinding === true,
@@ -371,16 +392,40 @@ export async function startManager(options: ManagerOptions) {
         return send(res, 200, await appState(String(input.appId || "")));
       }
       if (req.method === "POST" && url.pathname === "/api/create-plan") {
-        const input = await body(req), appId = String(input.appId || ""), session = sessions.get(appId)
-        if (!session) throw new Error("Unlock the private key first")
-        const name = String(input.name || "").trim()
-        if (!/^[A-Za-z0-9._-]{1,64}$/.test(name)) throw new Error("Plan names may contain only letters, numbers, dots, underscores, and hyphens")
-        const config = await readConfig(appId)
-        if (config.plans.some(plan => plan.toLowerCase() === name.toLowerCase())) throw new Error("Plan already exists")
-        config.plans.push(name)
-        await secureWrite(paths(appId).config, config, 0o644)
-        const backup = await snapshot(appId, session.password)
-        return send(res, 200, { app: await appState(appId), backup })
+        const input = await body(req),
+          appId = String(input.appId || ""),
+          session = sessions.get(appId);
+        if (!session) throw new Error("Unlock the private key first");
+        const name = String(input.name || "").trim();
+        if (!/^[A-Za-z0-9._-]{1,64}$/.test(name))
+          throw new Error(
+            "Plan names may contain only letters, numbers, dots, underscores, and hyphens",
+          );
+        const config = await readConfig(appId);
+        if (
+          config.plans.some((plan) => plan.toLowerCase() === name.toLowerCase())
+        )
+          throw new Error("Plan already exists");
+        config.plans.push(name);
+        await secureWrite(paths(appId).config, config, 0o644);
+        const backup = await snapshot(appId, session.password);
+        return send(res, 200, { app: await appState(appId), backup });
+      }
+      if (
+        req.method === "POST" &&
+        url.pathname === "/api/release-major-version"
+      ) {
+        const input = await body(req),
+          appId = String(input.appId || ""),
+          session = sessions.get(appId);
+        if (!session) throw new Error("Unlock the private key first");
+        const config = await readConfig(appId),
+          next = config.majorVersion + 1;
+        config.majorVersions.push(next);
+        config.majorVersion = next;
+        await secureWrite(paths(appId).config, config, 0o644);
+        const backup = await snapshot(appId, session.password);
+        return send(res, 200, { app: await appState(appId), backup });
       }
       if (req.method === "POST" && url.pathname === "/api/rotate-key") {
         const input = await body(req),
@@ -389,7 +434,9 @@ export async function startManager(options: ManagerOptions) {
         if (!session) throw new Error("Unlock the private key first");
         const config = await readConfig(appId);
         if (config.keys.some((key) => key.status === "pending"))
-          throw new Error("A pending key already exists; finish the current rotation first");
+          throw new Error(
+            "A pending key already exists; finish the current rotation first",
+          );
         const kid = generateKid(),
           pair = generateSigningKeyPair(),
           publicKeyRaw = rawPublicKey(pair.publicKeyPem),
@@ -448,20 +495,28 @@ export async function startManager(options: ManagerOptions) {
           session = sessions.get(appId);
         if (!session) throw new Error("Unlock the private key first");
         const config = await readConfig(appId),
+          majorVersion = Number(input.majorVersion || config.majorVersion),
           features = String(input.features || "")
             .split(",")
             .map((x) => x.trim())
             .filter(Boolean),
           deviceId = config.deviceBinding
-            ? readDeviceRequest(String(input.deviceRequest || ""), config)
+            ? readDeviceRequest(
+                String(input.deviceRequest || ""),
+                config,
+                majorVersion,
+              )
             : undefined;
-        const plan = String(input.plan || "")
-        if (!plan || !config.plans.includes(plan)) throw new Error("Choose an existing Plan before issuing")
+        if (!config.majorVersions.includes(majorVersion))
+          throw new Error("Choose a released Major Version before issuing");
+        const plan = String(input.plan || "");
+        if (!plan || !config.plans.includes(plan))
+          throw new Error("Choose an existing Plan before issuing");
         const issued = issueLicense(
           {
             appId,
-            majorVersion: config.majorVersion,
-          ...(deviceId ? { deviceId } : {}),
+            majorVersion,
+            ...(deviceId ? { deviceId } : {}),
             kid: config.kid,
             plan,
             ...(features.length ? { features } : {}),
@@ -529,9 +584,13 @@ export async function startManager(options: ManagerOptions) {
           });
           const target = paths(restored.appId).root;
           if (await exists(target))
-            throw new Error("This App already exists; restore it from the App page");
+            throw new Error(
+              "This App already exists; restore it from the App page",
+            );
           if (!(await exists(join(temporary, "app.json"))))
-            throw new Error("This legacy backup has no App configuration; create the same App before restoring it");
+            throw new Error(
+              "This legacy backup has no App configuration; create the same App before restoring it",
+            );
           await rename(temporary, target);
           return send(res, 200, {
             restored,
@@ -562,9 +621,10 @@ export async function startManager(options: ManagerOptions) {
 const HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline License Manager</title><style>
 :root{--ink:#17211a;--green:#294e35;--paper:#f3f5ef;--line:#dfe6dc;--muted:#708074;--yellow:#f3ca52}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}.shell{width:min(1120px,calc(100% - 32px));margin:34px auto}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.title{font-size:28px;font-weight:800}.sub,.meta{color:var(--muted);font-size:13px;line-height:1.55}.grid{display:grid;grid-template-columns:400px 1fr;gap:22px}.card{background:#fff;border-radius:20px;padding:24px;box-shadow:0 12px 34px #243b2b12}h2{margin:0 0 18px;font-size:19px}label{display:block;margin:14px 0 7px;font-weight:650}input,textarea,select{width:100%;border:1px solid var(--line);border-radius:12px;background:#f8faf6;padding:11px 13px;font:inherit}textarea{min-height:84px;resize:vertical;font-family:ui-monospace,monospace}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:12px;padding:11px 15px;background:#eaf0e8;color:var(--green);font:inherit;font-weight:750;cursor:pointer}.primary{background:var(--green);color:#fff}.wide{width:100%;margin-top:18px}.hidden{display:none!important}.app-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}.app{cursor:pointer}.app:hover{outline:2px solid #adc4b2}.app-name{font-size:18px;font-weight:800;margin-bottom:7px}.record{padding:15px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:14px}.record:last-child{border:0}.record-main{min-width:0}.tools{display:flex;gap:8px;flex-wrap:wrap}.back{margin-bottom:16px}.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 17px;border-radius:20px;opacity:0;transition:.2s;max-width:80%}.toast.show{opacity:1}@media(max-width:800px){.grid{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:12px}}
 .record-filter-bar{display:grid;grid-template-columns:180px 1fr;gap:10px;margin-bottom:8px}.plan-filter{position:relative}.plan-filter>button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;background:#f8faf6;border:1px solid var(--line)}.plan-filter-menu{position:absolute;z-index:10;top:calc(100% + 6px);left:0;min-width:220px;max-height:240px;overflow:auto;padding:8px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px #243b2b20}.plan-filter-menu label{display:flex;align-items:center;gap:8px;margin:0;padding:8px 2px;font-weight:500}.plan-filter-menu input{width:auto}.record-filter-count{margin:8px 0 2px}@media(max-width:650px){.record-filter-bar{grid-template-columns:1fr}}
+.major-version-bar{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px}.major-version-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.major-version-chip{border:1px solid var(--line);background:#f8faf6}.major-version-chip.active{background:var(--green);color:#fff;border-color:var(--green)}@media(max-width:650px){.major-version-bar{align-items:stretch;flex-direction:column}}
 </style></head><body><main class="shell"><header class="head"><div><div class="title">Offline License Manager</div><div class="sub">Local issuance · Encrypted private keys · Automatic encrypted backups</div></div><div class="tools"><button id="restoreOpen">Restore from Backup</button><button id="createOpen" class="primary">Create App</button></div></header>
 <section id="home"><div id="empty" class="card hidden"><h2>No Apps yet</h2><div class="sub">Create an App to generate an Ed25519 key pair. Your password encrypts the private key.</div></div><div class="app-list" id="apps"></div></section>
-<section id="create" class="card hidden"><button class="back" id="createBack">Back</button><h2>Create App</h2><div class="row"><div><label>App Name</label><input id="newName" placeholder="Lemon Note"></div><div><label>App ID</label><input id="newAppId" placeholder="app_lemon_note"></div></div><label>Major Version</label><input id="newMajor" type="number" value="1"><label><input id="newDeviceBinding" type="checkbox" style="width:auto;margin-right:8px">Bind licenses to devices</label><div class="sub">When enabled, each license works only on the device specified at issuance. This setting cannot be changed later.</div><div class="row"><div><label>Private Key Password</label><input id="newPassword" type="password"></div><div><label>Confirm Password</label><input id="newConfirm" type="password"></div></div><label>Automatic Backup Folder</label><div class="row"><input id="newBackupDir" placeholder="Uses iCloud Drive automatically when available"><button id="chooseNewDir">Choose Folder</button></div><button class="primary wide" id="createButton">Generate Key and Create</button></section>
+<section id="create" class="card hidden"><button class="back" id="createBack">Back</button><h2>Create App</h2><div class="sub">Every new App starts at Major Version 1.</div><div class="row"><div><label>App Name</label><input id="newName" placeholder="Lemon Note"></div><div><label>App ID</label><input id="newAppId" placeholder="app_lemon_note"></div></div><label><input id="newDeviceBinding" type="checkbox" style="width:auto;margin-right:8px">Bind licenses to devices</label><div class="sub">When enabled, each license works only on the device specified at issuance. This setting cannot be changed later.</div><div class="row"><div><label>Private Key Password</label><input id="newPassword" type="password"></div><div><label>Confirm Password</label><input id="newConfirm" type="password"></div></div><label>Automatic Backup Folder</label><div class="row"><input id="newBackupDir" placeholder="Uses iCloud Drive automatically when available"><button id="chooseNewDir">Choose Folder</button></div><button class="primary wide" id="createButton">Generate Key and Create</button></section>
 <section id="restoreNew" class="card hidden"><button class="back" id="restoreNewBack">Back</button><h2>Restore App on a New Machine</h2><div class="sub">Select a complete .olmbackup file to restore the App configuration, encrypted private keys, public keys, and all issued-license records.</div><label>Full Backup File Path</label><input id="restoreNewPath"><label>Backup Password</label><input id="restoreNewPassword" type="password"><button class="primary wide" id="restoreNewButton">Restore to Default Local Folder</button></section>
 <section id="detail" class="hidden"><button class="back" id="detailBack">← All Apps</button><div class="head"><div><h2 id="appTitle"></h2><div class="sub" id="appMeta"></div></div><div class="tools"><button id="lockButton">Lock</button></div></div><section id="unlock" class="card hidden"><h2>Unlock Private Key</h2><label>Private Key Password</label><input id="unlockPassword" type="password"><button class="primary wide" id="unlockButton">Unlock and Manage</button></section><section id="workspace" class="grid hidden"><div><div class="card"><h2>Issue License</h2><div id="deviceRequestField" class="hidden"><label>Device Request</label><textarea id="deviceRequest" placeholder="Paste the OLMR1 request shown on the user device"></textarea></div><div class="row"><div><label>Customer</label><input id="customer"></div><div><label>Plan</label><div class="plan-filter"><input id="plan" type="hidden"><button id="planSelectButton"><span id="planSelectValue">Choose a Plan</span><span>▾</span></button><div id="planSelectMenu" class="plan-filter-menu hidden"></div></div></div></div><label>Features (optional, comma-separated)</label><input id="features"><label>Expiration Unix Timestamp (optional)</label><input id="expiresAt" type="number"><label>Note</label><textarea id="note"></textarea><button class="primary wide" id="issueButton">Generate License</button></div><div class="card" style="margin-top:22px"><h2>Key Management</h2><div class="sub">New key IDs are generated automatically. Add and release the pending public key in your App before switching the signing key.</div><div id="keys"></div><div class="tools" style="margin-top:12px"><button id="copyPublicKeys">Copy Public Key Set</button><button id="rotateKey">Generate Pending Key</button><button id="activatePending" class="hidden">Activate Pending Key</button></div></div><div class="card" style="margin-top:22px"><h2>Backup & Recovery</h2><div class="sub">A complete encrypted backup is created after App creation and every issuance. Automatic backups keep the latest 10 snapshots. iCloud Drive is used by default when available.</div><label>Automatic Backup Folder</label><div class="row"><input id="backupDir"><button id="chooseBackupDir">Choose Folder</button></div><button id="saveBackupDir" class="wide">Save Folder and Back Up Now</button><label>Export to Another Location</label><button id="exportOther" class="wide">Choose Folder and Export Encrypted Backup</button><label>Restore from Backup (full path)</label><input id="restorePath" placeholder="/Volumes/Backup/app.olmbackup"><button id="restoreButton" class="wide">Restore Locally</button></div></div><div class="card"><h2>Issued Licenses</h2><div id="records"></div></div></section></section></main><div class="toast" id="toast"></div><script>
 const token=new URLSearchParams(location.search).get('token'),$=id=>document.getElementById(id);let apps=[],app=null;const toast=t=>{const e=$('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2600)};async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-Manager-Token':token},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error);return d}const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));function show(id){['home','create','restoreNew','detail'].forEach(x=>$(x).classList.toggle('hidden',x!==id))}async function loadApps(){const d=await api('apps');apps=d.apps;$('apps').innerHTML=apps.map(a=>'<article class="card app" data-id="'+esc(a.appId)+'"><div class="app-name">'+esc(a.name)+'</div><div class="meta">'+esc(a.appId)+' · Major '+a.majorVersion+' · '+a.recordCount+' records</div></article>').join('');$('empty').classList.toggle('hidden',apps.length>0);document.querySelectorAll('.app').forEach(e=>e.onclick=()=>openApp(e.dataset.id));if(d.iCloudAvailable&&!$('newBackupDir').value)$('newBackupDir').placeholder='iCloud Drive will be used automatically'}async function openApp(id){app=await api('app?appId='+encodeURIComponent(id));renderApp();show('detail')}function renderApp(){$('appTitle').textContent=app.name;$('appMeta').textContent=app.appId+' · Major '+app.majorVersion+' · '+(app.deviceBinding?'Device-bound':'Portable')+' · '+app.kid;$('unlock').classList.toggle('hidden',app.unlocked);$('workspace').classList.toggle('hidden',!app.unlocked);$('lockButton').classList.toggle('hidden',!app.unlocked);$('backupDir').value=app.defaultBackupDirectory||'';$('deviceRequestField').classList.toggle('hidden',!app.deviceBinding);$('keys').innerHTML=app.keys.map(k=>'<div class="record"><div><b>'+esc(k.kid)+'</b><div class="meta">'+esc(k.status)+' · '+new Date(k.createdAt).toLocaleDateString()+'</div></div></div>').join('');$('activatePending').classList.toggle('hidden',!app.keys.some(k=>k.status==='pending'));$('records').innerHTML=app.records.length?app.records.map(r=>'<div class="record"><div class="record-main"><b>'+esc(r.customer||'Unnamed customer')+'</b> · '+esc(r.payload.plan||'feature')+'<div class="meta">'+new Date(r.issuedAt).toLocaleString()+' · '+esc(r.payload.licenseId)+'</div></div><button class="copy-license" data-code="'+esc(r.code)+'">Copy License</button></div>').join(''):'<div class="sub">No issued licenses yet</div>';document.querySelectorAll('.copy-license').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.code).then(()=>toast('License copied')))}$('createOpen').onclick=()=>show('create');$('restoreOpen').onclick=()=>show('restoreNew');$('createBack').onclick=()=>show('home');$('restoreNewBack').onclick=()=>show('home');$('detailBack').onclick=async()=>{await loadApps();show('home')};$('restoreNewButton').onclick=async()=>{try{const d=await api('restore-new',{backupFile:$('restoreNewPath').value,password:$('restoreNewPassword').value});app=d.app;renderApp();show('detail');toast('App restored. Unlock it with the private key password.')}catch(e){toast(e.message)}};async function choose(){return(await api('choose-directory',{})).directory}$('chooseNewDir').onclick=async()=>{try{$('newBackupDir').value=await choose()}catch(e){toast(e.message)}};$('createButton').onclick=async()=>{if($('newPassword').value!==$('newConfirm').value)return toast('Passwords do not match');try{const d=await api('create-app',{name:$('newName').value,appId:$('newAppId').value,majorVersion:Number($('newMajor').value),password:$('newPassword').value,deviceBinding:$('newDeviceBinding').checked,backupDirectory:$('newBackupDir').value});app=d.app;renderApp();show('detail');toast(d.backup.needsDirectory?'App created. Choose an automatic backup folder.':'App created and encrypted backup completed.')}catch(e){toast(e.message)}};$('unlockButton').onclick=async()=>{try{app=await api('unlock',{appId:app.appId,password:$('unlockPassword').value});renderApp();toast('Unlocked')}catch(e){toast(e.message)}};$('lockButton').onclick=async()=>{app=await api('lock',{appId:app.appId});renderApp()};$('issueButton').onclick=async()=>{try{const d=await api('issue',{appId:app.appId,deviceRequest:$('deviceRequest').value,customer:$('customer').value,plan:$('plan').value,features:$('features').value,expiresAt:$('expiresAt').value,note:$('note').value});app=d.app;renderApp();await navigator.clipboard.writeText(d.issued.code);toast(d.backup.needsDirectory?'License issued and copied. Set an automatic backup folder.':'License issued, copied, and backed up.')}catch(e){toast(e.message)}};$('chooseBackupDir').onclick=async()=>{try{$('backupDir').value=await choose()}catch(e){toast(e.message)}};$('saveBackupDir').onclick=async()=>{try{app=await api('set-backup-directory',{appId:app.appId,directory:$('backupDir').value});await api('export-backup',{appId:app.appId,directory:$('backupDir').value,automatic:true});renderApp();toast('Folder saved and backup completed.')}catch(e){toast(e.message)}};$('exportOther').onclick=async()=>{try{const directory=await choose();await api('export-backup',{appId:app.appId,directory});toast('Encrypted backup exported.')}catch(e){toast(e.message)}};$('restoreButton').onclick=async()=>{if(!confirm('Restoring will replace this App’s local manager data. Continue?'))return;try{const d=await api('restore',{appId:app.appId,backupFile:$('restorePath').value,password:$('unlockPassword').value});app=d.app;renderApp();toast('Restore completed. Unlock again with the private key password.')}catch(e){toast(e.message)}};$('copyPublicKeys').onclick=()=>navigator.clipboard.writeText(JSON.stringify(app.publicKeys,null,2)).then(()=>toast('Public key set copied.'));$('rotateKey').onclick=async()=>{if(!confirm('After generating a new key, you must update and release the App before activating it. Continue?'))return;try{const d=await api('rotate-key',{appId:app.appId});app=d.app;renderApp();toast('Pending key generated. Copy the public key set and update the App.')}catch(e){toast(e.message)}};$('activatePending').onclick=async()=>{const pending=app.keys.find(k=>k.status==='pending');if(!pending||!confirm('Has the App been released with the new public key? New licenses will use the new key after activation.'))return;try{const d=await api('activate-key',{appId:app.appId,kid:pending.kid});app=d.app;renderApp();toast('New signing key activated.')}catch(e){toast(e.message)}};loadApps().then(()=>show('home')).catch(e=>toast(e.message))
@@ -572,22 +632,25 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
 (()=>{
   const baseRenderApp=renderApp
   const baseOpenApp=openApp
-  let filterAppId='',selectedPlans=new Set(),lastAutofillDeviceId=''
+  let filterAppId='',selectedPlans=new Set(),lastAutofillDeviceId='',majorAppId='',selectedMajorVersion=1
+  const legacyMajor=document.createElement('input');legacyMajor.id='newMajor';legacyMajor.type='hidden';legacyMajor.value='1';$('create').appendChild(legacyMajor)
+  const majorManager=document.createElement('section');majorManager.id='majorVersionManager';majorManager.className='card major-version-bar';majorManager.innerHTML='<div><h2>Major Versions</h2><div class="sub">Select the version used for the next license. Existing versions remain available.</div><div id="majorVersionList" class="major-version-list"></div><input id="issueMajorVersion" type="hidden"></div><button id="releaseMajorVersion">Release New Major Version</button>'
+  $('detail').insertBefore(majorManager,$('unlock'))
   $('unlockPassword').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();$('unlockButton').click()}})
   openApp=async function(id){await baseOpenApp(id);if(!app.unlocked)requestAnimationFrame(()=>$('unlockPassword').focus())}
-  function decodeDeviceId(value){
+  function decodeLicensePayload(value){
     if(!app.deviceBinding)return ''
     try{
       const parts=String(value||'').trim().split('.')
       if(!((parts[0]==='OLM1'&&parts.length===3)||(parts[0]==='OLMR1'&&parts.length===2)))return ''
       let encoded=parts[1].replace(/-/g,'+').replace(/_/g,'/');while(encoded.length%4)encoded+='='
       const binary=atob(encoded),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0)),payload=JSON.parse(new TextDecoder().decode(bytes))
-      return typeof payload.deviceId==='string'?payload.deviceId:''
-    }catch(_){return ''}
+      return payload&&typeof payload.deviceId==='string'?payload:null
+    }catch(_){return null}
   }
   function applyRecordFilters(){
     if(!app)return
-    const input=$('recordSearch'),rawQuery=String(input?.value||'').trim(),query=rawQuery.toLowerCase(),decodedDeviceId=decodeDeviceId(rawQuery)
+    const input=$('recordSearch'),rawQuery=String(input?.value||'').trim(),query=rawQuery.toLowerCase(),decodedDeviceId=decodeLicensePayload(rawQuery)?.deviceId
     let visible=0
     Array.from($('records').children).forEach((element,index)=>{
       const record=app.records[index]
@@ -625,6 +688,19 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
     $('plan').value=selected;$('planSelectValue').textContent=selected||'Choose a Plan'
     $('planSelectMenu').querySelectorAll('input').forEach(input=>input.checked=input.value===selected)
   }
+  function selectMajorVersion(version){
+    const selected=app.majorVersions.includes(Number(version))?Number(version):app.majorVersion
+    selectedMajorVersion=selected;$('issueMajorVersion').value=String(selected)
+    $('majorVersionList').querySelectorAll('button').forEach(button=>button.classList.toggle('active',Number(button.dataset.version)===selected))
+  }
+  function setupMajorVersions(){
+    if(majorAppId!==app.appId){majorAppId=app.appId;selectedMajorVersion=app.majorVersion}
+    $('majorVersionList').innerHTML=app.majorVersions.map(version=>'<button class="major-version-chip" data-version="'+version+'">Major '+version+'</button>').join('')
+    $('majorVersionList').querySelectorAll('button').forEach(button=>button.onclick=()=>selectMajorVersion(button.dataset.version))
+    $('releaseMajorVersion').classList.toggle('hidden',!app.unlocked)
+    $('releaseMajorVersion').onclick=async()=>{const next=app.majorVersion+1;if(!confirm('Release Major '+next+'? Existing licenses for earlier Major Versions will remain valid in those App versions.'))return;try{const d=await api('release-major-version',{appId:app.appId});app=d.app;selectedMajorVersion=app.majorVersion;renderApp();toast('Major '+app.majorVersion+' released and backed up.')}catch(error){toast(error.message)}}
+    selectMajorVersion(selectedMajorVersion)
+  }
   function setupPlanCatalog(){
     let manager=$('planManager')
     if(!manager){
@@ -645,8 +721,9 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
   function setupDeviceAutofill(){
     const field=$('deviceRequest')
     field.oninput=()=>{
-      const deviceId=decodeDeviceId(field.value)
+      const request=decodeLicensePayload(field.value),deviceId=request?.deviceId
       if(!deviceId){lastAutofillDeviceId='';return}
+      if(app.majorVersions.includes(Number(request.majorVersion)))selectMajorVersion(Number(request.majorVersion))
       if(deviceId===lastAutofillDeviceId)return
       lastAutofillDeviceId=deviceId
       const previous=app.records.find(record=>record.payload?.deviceId===deviceId)
@@ -659,6 +736,7 @@ const token=new URLSearchParams(location.search).get('token'),$=id=>document.get
       else toast(subject+' has already received a license.')
     }
   }
-  renderApp=function(){baseRenderApp();if(filterAppId!==app.appId)lastAutofillDeviceId='';setupPlanCatalog();setupRecordFilters();setupDeviceAutofill()}
+  $('issueButton').onclick=async()=>{try{const d=await api('issue',{appId:app.appId,majorVersion:selectedMajorVersion,deviceRequest:$('deviceRequest').value,customer:$('customer').value,plan:$('plan').value,features:$('features').value,expiresAt:$('expiresAt').value,note:$('note').value});app=d.app;renderApp();await navigator.clipboard.writeText(d.issued.code);toast(d.backup.needsDirectory?'License issued and copied. Set an automatic backup folder.':'Major '+d.issued.payload.majorVersion+' license issued, copied, and backed up.')}catch(error){toast(error.message)}}
+  renderApp=function(){baseRenderApp();if(filterAppId!==app.appId)lastAutofillDeviceId='';setupMajorVersions();setupPlanCatalog();setupRecordFilters();setupDeviceAutofill()}
 })()
 </script></body></html>`;

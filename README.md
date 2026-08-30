@@ -37,7 +37,11 @@ Manager data defaults to:
 ~/Library/Application Support/Offline License Manager/apps/<appId>/
 ```
 
-The UI creates every license record before reporting issuance success. Records can be searched by customer, features, note, or a pasted bound license/device request, and filtered by multiple plans. Device binding is an App-level creation switch: bound Apps require a device request code for every issuance, while unbound Apps produce portable licenses. App creation and every successful issue automatically create a complete encrypted `.olmbackup`. Automatic destinations retain only the latest 10 snapshots. If iCloud Drive exists, the default external destination is `iCloud Drive/Offline License Manager/<appId>/Backups`; otherwise the UI asks for a folder. **Export to another location** creates an independent offline copy and is never automatically deleted. A new machine can restore the App configuration, encrypted key, public key, and complete record ledger directly from one backup.
+The UI creates every license record before reporting issuance success. Records can be searched by customer, features, note, or a pasted bound license/device request, and filtered by multiple plans. Device binding is an App-level creation switch: bound Apps require a device request code for every issuance, while unbound Apps produce portable licenses.
+
+Every App starts with Major Version 1. The full-width Major Versions module releases versions sequentially (1, 2, 3, ...) after confirmation and lets the issuer select any released version. Existing versions cannot be deleted, so licenses for an older App release remain available. For device-bound Apps, pasting a device request automatically selects the exact Major Version declared by that request. Major-version state is included in complete backups.
+
+App creation, Major Version release, and every successful issue automatically create a complete encrypted `.olmbackup`. Automatic destinations retain only the latest 10 snapshots. If iCloud Drive exists, the default external destination is `iCloud Drive/Offline License Manager/<appId>/Backups`; otherwise the UI asks for a folder. **Export to another location** creates an independent offline copy and is never automatically deleted. A new machine can restore the App configuration, encrypted key, public key, Major Versions, and complete record ledger directly from one backup.
 
 ### Key rotation
 
