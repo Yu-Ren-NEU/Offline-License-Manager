@@ -60,6 +60,10 @@ npm install
 npm test
 ```
 
+## Automated npm publishing
+
+Pushes to `main` run `.github/workflows/publish.yml`. The workflow tests the package and publishes only when the version in `package.json` does not already exist on npm. Publishing uses npm Trusted Publishing with GitHub OIDC, so the repository does not store a long-lived npm token. Configure the npm package trusted publisher for repository `Yu-Ren-NEU/Offline-License-Manager` and workflow filename `publish.yml`.
+
 ## CLI quick start
 
 ```bash
