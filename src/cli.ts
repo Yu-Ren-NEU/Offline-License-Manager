@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -11,7 +12,8 @@ import { createLicenseClient } from './sdk.js'
 import { appendIssuedLicenseRecord, copyBackupToICloud, createBackup, restoreBackup } from './backup.js'
 import { startManager } from './manager.js'
 
-const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version('1.6.0')
+const packageVersion = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version
+const program = new Command().name('offline-license').description('Zero-server Ed25519 license manager').version(packageVersion)
 const json = (value: string) => JSON.parse(value)
 const ensureParent = (file: string) => mkdir(dirname(file), { recursive: true })
 

@@ -1,6 +1,6 @@
 {
   "name": "@ben0918/offline-license-manager",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Zero-server Ed25519 license issuing and verification toolkit",
   "type": "module",
   "main": "dist/src/index.js",
