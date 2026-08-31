@@ -1,6 +1,6 @@
 {
   "name": "@ben0918/offline-license-manager",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Zero-server Ed25519 license issuing and verification toolkit",
   "type": "module",
   "main": "dist/src/index.js",
@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "npm run build && node --test dist/test/*.test.js",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
